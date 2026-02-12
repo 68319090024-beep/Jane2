@@ -1,69 +1,4 @@
-<!DOCTYPE html>
-<html lang="th">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Earthquake & Light Monitor</title>
-    
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
-    
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600&display=swap" rel="stylesheet">
-
-    <style>
-        :root { --bg-color: #0f172a; --card-bg: #1e293b; --primary-color: #38bdf8; --danger-color: #ef4444; --success-color: #22c55e; }
-        body { font-family: 'Kanit', sans-serif; background-color: var(--bg-color); color: #f8fafc; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-        .container { width: 100%; max-width: 480px; }
-        .status-card { background: var(--card-bg); padding: 30px; border-radius: 24px; text-align: center; border: 1px solid #334155; }
-        
-        .grid { display: grid; grid-template-columns: 1fr; gap: 15px; margin-top: 20px; }
-        .sensor-item { background: #334155; padding: 20px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; }
-        .sensor-item i { font-size: 28px; margin-bottom: 10px; color: var(--primary-color); }
-        .val { font-size: 24px; font-weight: bold; margin-top: 5px; }
-        .label { font-size: 14px; color: #94a3b8; }
-
-        /* สีพิเศษ */
-        .bright-text { color: #FDB813 !important; text-shadow: 0 0 10px rgba(253, 184, 19, 0.5); }
-        .dark-text { color: #94a3b8 !important; }
-        .alert-text { color: var(--danger-color) !important; animation: blink 1s infinite; }
-
-        .btn-reset { width: 100%; padding: 15px; margin-top: 20px; border: none; border-radius: 12px; font-family: 'Kanit'; font-size: 18px; background: #22c55e; color: white; cursor: pointer; }
-        @keyframes blink { 50% { opacity: 0.5; } }
-    </style>
-</head>
-<body>
-
-    <div class="container">
-        <div class="status-card">
-            <h2><i class="fas fa-tower-broadcast"></i> ระบบแจ้งเตือนภัย</h2>
-            
-            <div class="grid">
-                <div class="sensor-item">
-                    <i class="fas fa-temperature-half"></i>
-                    <span class="label">อุณหภูมิ</span>
-                    <span id="temp" class="val">-- °C</span>
-                </div>
-
-                <div class="sensor-item">
-                    <i id="icon-light" class="fas fa-lightbulb"></i>
-                    <span class="label">สภาพแสง</span>
-                    <span id="light" class="val">รอค่า...</span>
-                </div>
-
-                <div class="sensor-item">
-                    <i id="icon-vibe" class="fas fa-wave-square"></i>
-                    <span class="label">การสั่นสะเทือน</span>
-                    <span id="vibe" class="val">ปกติ</span>
-                </div>
-            </div>
-
-            <button class="btn-reset" onclick="resetSystem()">รีเซ็ตระบบ / ปิดเสียง</button>
-        </div>
-    </div>
-
-    <script>
-        // 1. ใส่ API KEY ของคุณ
+<script>
         const firebaseConfig = {
             apiKey: "AIzaSyAlPqcIYDYfRBYwnOKJ4n4KzNLvEEl5x64", 
             databaseURL: "https://kun16-95305-default-rtdb.firebaseio.com",
@@ -77,29 +12,27 @@
             const data = snapshot.val();
             if(!data) return;
 
-            // --- อุณหภูมิ ---
             document.getElementById("temp").innerText = (data.temp || 0).toFixed(1) + " °C";
 
-            // --- แสง (สว่าง/มืด) ---
+            /* === ส่วนที่แก้ไข: การแสดงผลแสง === */
             const lightEl = document.getElementById("light");
             const iconLight = document.getElementById("icon-light");
             
-            // ใช้ค่าจาก light_value (ถ้าคุณแก้เป็น A0 แล้ว) หรือใช้ light_alert (ถ้ายังใช้ D3)
+            // อ่านค่า (0 หรือ 1)
             let val = data.light_value; 
-            if (val === undefined) val = data.light_alert ? 0 : 1000; // fallback ถ้าหาค่าไม่เจอ
 
-            // *** เงื่อนไข: ถ้าค่าน้อยกว่า 500 คือ สว่าง (แก้เลข 500 หรือเครื่องหมาย < ได้ตรงนี้) ***
-            if (val < 500) { 
+            // ตรรกะใหม่: ถ้าค่าเป็น 0 คือ สว่าง, ถ้าเป็น 1 คือ มืด
+            if (val == 0) { 
                 lightEl.innerText = "สว่าง";
-                lightEl.className = "val bright-text"; // สีเหลืองทอง
+                lightEl.className = "val bright-text"; // สีเหลือง
                 iconLight.className = "fas fa-sun bright-text";
             } else {
-                lightEl.innerText = "มืด";
+                lightEl.innerText = "มืด / ปกติ";
                 lightEl.className = "val dark-text";   // สีเทา
                 iconLight.className = "fas fa-moon dark-text";
             }
+            /* ================================= */
 
-            // --- สั่นสะเทือน ---
             const vibeEl = document.getElementById("vibe");
             if (data.vibrate == true) {
                 vibeEl.innerText = "แผ่นดินไหว!";
@@ -108,11 +41,19 @@
                 vibeEl.innerText = "ปกติ";
                 vibeEl.className = "val";
             }
+
+            // จัดการสถานะแจ้งเตือนหลัก
+            const badge = document.getElementById("statusBadge"); // ถ้ามี ID นี้
+            const card = document.querySelector(".status-card"); // หรือใช้ class
+
+            // ถ้า Alert เป็น true ให้แสดงสีแดง
+            if (data.alert == true) {
+               // ใส่โค้ดเปลี่ยนสีการ์ดถ้าต้องการ
+            }
         });
 
         function resetSystem() {
+            // กดปุ่มแล้วส่งค่า false ไปหยุด Arduino
             db.ref("Monitor").update({ alert: false, vibrate: false });
         }
     </script>
-</body>
-</html>
