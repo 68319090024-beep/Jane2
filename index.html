@@ -17,8 +17,7 @@
             --primary-color: #4a90e2;
             --danger-color: #ff4757;
             --success-color: #2ed573;
-            --warning-color: #ffa502;
-            --dark-color: #2f3542;
+            --dark-btn: #2f3542;
         }
 
         body {
@@ -47,24 +46,9 @@
             color: white;
             padding: 25px;
             position: relative;
-            transition: background 0.5s;
+            transition: background 0.3s;
         }
 
-        .header h1 {
-            margin: 0;
-            font-size: 24px;
-        }
-
-        .header .status-badge {
-            margin-top: 10px;
-            display: inline-block;
-            background: rgba(255,255,255,0.2);
-            padding: 5px 15px;
-            border-radius: 50px;
-            font-size: 14px;
-        }
-
-        /* สถานะแจ้งเตือน */
         .header.alarm-active {
             background: var(--danger-color);
             animation: pulse 1.5s infinite;
@@ -74,6 +58,16 @@
             0% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.7); }
             70% { box-shadow: 0 0 0 15px rgba(255, 71, 87, 0); }
             100% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0); }
+        }
+
+        .header h1 { margin: 0; font-size: 24px; }
+        .status-badge {
+            margin-top: 10px;
+            display: inline-block;
+            background: rgba(255,255,255,0.2);
+            padding: 5px 15px;
+            border-radius: 50px;
+            font-size: 14px;
         }
 
         .content {
@@ -88,72 +82,58 @@
             padding: 20px;
             border-radius: 15px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-            transition: transform 0.2s;
         }
-
-        .card:hover { transform: translateY(-3px); }
-
-        .card i {
-            font-size: 30px;
-            margin-bottom: 10px;
-            color: var(--primary-color);
-        }
-
-        .card h3 {
-            margin: 5px 0;
-            font-size: 16px;
-            color: #777;
-        }
-
-        .card .value {
-            font-size: 22px;
-            font-weight: 600;
-            color: var(--text-color);
-        }
-
         .full-width { grid-column: span 2; }
+
+        .card i { font-size: 30px; margin-bottom: 10px; color: var(--primary-color); }
+        .card h3 { margin: 5px 0; font-size: 16px; color: #777; }
+        .card .value { font-size: 22px; font-weight: 600; color: var(--text-color); }
 
         .status-normal { color: var(--success-color) !important; }
         .status-danger { color: var(--danger-color) !important; }
 
-        /* --- ส่วนปุ่มควบคุมที่แก้ไขใหม่ --- */
+        /* --- ส่วนปุ่มควบคุม (แก้ไขใหม่ตามสั่ง) --- */
         .controls {
             padding: 20px;
             border-top: 1px solid #eee;
-            display: flex;           /* จัดเรียงแนวนอน */
-            gap: 10px;               /* ระยะห่างระหว่างปุ่ม */
-            justify-content: center;
+            display: flex;          /* เรียงแนวนอน */
+            gap: 15px;              /* เว้นระยะห่างระหว่างปุ่ม */
         }
 
-        /* สไตล์ปุ่มทั่วไป */
         .btn {
+            flex: 1;                /* ให้ปุ่มขยายเต็มพื้นที่เท่ากัน */
             border: none;
-            padding: 15px 10px;
+            padding: 15px 0;
             border-radius: 50px;
-            font-size: 16px;
+            font-size: 18px;
             cursor: pointer;
-            width: 100%; /* ให้ยืดเต็มพื้นที่ flex */
             font-family: 'Kanit', sans-serif;
             color: white;
-            transition: all 0.3s;
+            transition: transform 0.2s;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 8px;
         }
 
-        .btn:hover { transform: scale(1.03); }
-        .btn:disabled { background: #ccc !important; cursor: not-allowed; transform: none; opacity: 0.7; }
+        .btn:active { transform: scale(0.95); }
 
         /* ปุ่มปิดเสียง (สีแดง) */
         .btn-stop {
-            background: var(--danger-color);
+            background-color: var(--danger-color);
             box-shadow: 0 5px 15px rgba(255, 71, 87, 0.3);
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        /* ถ้าเปิดใช้งานปุ่มหยุด */
+        .btn-stop.active {
+            opacity: 1;
+            cursor: pointer;
         }
 
-        /* ปุ่มรีเซ็ต (สีเทาเข้ม/น้ำเงิน) */
+        /* ปุ่มรีเซ็ต (สีเทาเข้ม) */
         .btn-reset {
-            background: var(--dark-color);
+            background-color: var(--dark-btn);
             box-shadow: 0 5px 15px rgba(47, 53, 66, 0.3);
         }
 
@@ -164,7 +144,7 @@
     <div class="dashboard">
         <div class="header" id="header-bg">
             <h1><i class="fas fa-shield-alt"></i> ระบบเฝ้าระวังภัย</h1>
-            <div class="status-badge" id="system-status">ปกติ</div>
+            <div class="status-badge" id="system-status">สถานะปกติ</div>
         </div>
 
         <div class="content">
@@ -177,21 +157,19 @@
             <div class="card">
                 <i class="fas fa-wave-square" id="icon-vib"></i>
                 <h3>การสั่นสะเทือน</h3>
-                <div class="value" id="vib-val">รอข้อมูล...</div>
+                <div class="value" id="vib-val">ปกติ</div>
             </div>
 
             <div class="card">
                 <i class="fas fa-microphone" id="icon-sound"></i>
                 <h3>เสียง</h3>
-                <div class="value" id="sound-val">รอข้อมูล...</div>
+                <div class="value" id="sound-val">ปกติ</div>
             </div>
             
-            <div class="card full-width" style="display: flex; align-items: center; justify-content: center; gap: 15px;">
+            <div class="card full-width">
                 <i class="fas fa-volume-up" id="icon-buzzer"></i>
-                <div>
-                    <h3>สถานะเสียงแจ้งเตือน</h3>
-                    <div class="value" id="buzzer-val">ปิดอยู่</div>
-                </div>
+                <h3>สถานะเสียงแจ้งเตือน (Buzzer)</h3>
+                <div class="value" id="buzzer-val">ปิดอยู่</div>
             </div>
         </div>
 
@@ -199,8 +177,9 @@
             <button class="btn btn-stop" id="btn-stop" onclick="stopSound()" disabled>
                 <i class="fas fa-volume-mute"></i> ปิดเสียง
             </button>
-            <button class="btn btn-reset" id="btn-reset" onclick="resetSystem()">
-                <i class="fas fa-sync-alt"></i> รีเซ็ตระบบ
+            
+            <button class="btn btn-reset" onclick="resetSystem()">
+                <i class="fas fa-redo-alt"></i> รีเซ็ตระบบ
             </button>
         </div>
     </div>
@@ -209,14 +188,14 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
     <script>
-        // --- ตั้งค่า Firebase ---
+        // Config Firebase
         const firebaseConfig = {
             databaseURL: "https://kun16-95305-default-rtdb.firebaseio.com"
         };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // UI Elements
+        // UI Variables
         const ui = {
             temp: document.getElementById('temp-val'),
             vib: document.getElementById('vib-val'),
@@ -227,14 +206,11 @@
             iconVib: document.getElementById('icon-vib'),
             iconSound: document.getElementById('icon-sound'),
             iconBuzzer: document.getElementById('icon-buzzer'),
-            btnStop: document.getElementById('btn-stop'),
-            btnReset: document.getElementById('btn-reset')
+            btnStop: document.getElementById('btn-stop') // ปุ่มปิดเสียง
         };
 
-        const monitorRef = db.ref('/Monitor');
-
-        // --- อ่านข้อมูล Realtime ---
-        monitorRef.on('value', (snapshot) => {
+        // Realtime Data
+        db.ref('/Monitor').on('value', (snapshot) => {
             const data = snapshot.val();
             if (!data) return;
 
@@ -243,7 +219,7 @@
 
             // 2. สั่น
             if (data.vibrate) {
-                ui.vib.innerText = "พบการสั่น!";
+                ui.vib.innerText = "⚠️ พบการสั่น!";
                 ui.vib.className = "value status-danger";
                 ui.iconVib.className = "fas fa-radiation status-danger";
             } else {
@@ -254,7 +230,7 @@
 
             // 3. เสียง
             if (data.sound_alert) {
-                ui.sound.innerText = "เสียงผิดปกติ!";
+                ui.sound.innerText = "⚠️ เสียงผิดปกติ!";
                 ui.sound.className = "value status-danger";
                 ui.iconSound.className = "fas fa-exclamation-triangle status-danger";
             } else {
@@ -263,50 +239,46 @@
                 ui.iconSound.className = "fas fa-microphone status-normal";
             }
 
-            // 4. สถานะรวม (Alert)
+            // 4. แจ้งเตือน (Alert) และ ปุ่มปิดเสียง
             if (data.alert) {
-                // แจ้งเตือน!
+                // ถ้า Alert ทำงาน
                 ui.header.className = "header alarm-active";
                 ui.status.innerText = "เกิดเหตุฉุกเฉิน!";
                 
                 ui.buzzer.innerText = "กำลังส่งเสียง...";
                 ui.buzzer.className = "value status-danger";
                 ui.iconBuzzer.className = "fas fa-volume-up status-danger";
-                
-                // เปิดให้กดปุ่ม "ปิดเสียง" ได้
+
+                // เปิดใช้งานปุ่ม "ปิดเสียง"
                 ui.btnStop.disabled = false;
-                ui.btnStop.style.opacity = "1";
+                ui.btnStop.classList.add('active'); 
+
             } else {
-                // ปกติ
+                // ถ้าปกติ
                 ui.header.className = "header";
                 ui.status.innerText = "สถานะปกติ";
                 
                 ui.buzzer.innerText = "ปิดอยู่";
                 ui.buzzer.className = "value status-normal";
                 ui.iconBuzzer.className = "fas fa-volume-mute status-normal";
-                
-                // ปิดปุ่ม "ปิดเสียง" เพราะมันดับอยู่แล้ว
+
+                // ปิดการใช้งานปุ่ม "ปิดเสียง" (กดไม่ได้)
                 ui.btnStop.disabled = true;
+                ui.btnStop.classList.remove('active');
             }
         });
 
-        // --- ฟังก์ชัน 1: ปิดเสียง (Stop Buzzer Only) ---
+        // ฟังก์ชันปุ่ม 1: ปิดเสียงอย่างเดียว (ค่าหน้าเว็บยังแดงอยู่ เพื่อให้รู้ว่าเคยเกิดเหตุ)
         function stopSound() {
-            // ส่งค่า alert = false เพื่อหยุด Buzzer ที่ Arduino
-            db.ref('/Monitor/alert').set(false).then(() => {
-                alert("สั่งปิดเสียงเรียบร้อย!");
-            });
+            db.ref('/Monitor/alert').set(false);
         }
 
-        // --- ฟังก์ชัน 2: รีเซ็ตระบบ (Reset All Status) ---
+        // ฟังก์ชันปุ่ม 2: รีเซ็ตทุกอย่าง (ปิดเสียง + เคลียร์ค่าหน้าเว็บเป็นสีเขียว)
         function resetSystem() {
-            // เคลียร์ค่าสถานะทั้งหมดให้กลับเป็นปกติ (สีเขียว)
             db.ref('/Monitor').update({
                 alert: false,
                 vibrate: false,
                 sound_alert: false
-            }).then(() => {
-                alert("รีเซ็ตสถานะระบบเรียบร้อย!");
             });
         }
 
