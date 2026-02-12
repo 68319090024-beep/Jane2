@@ -18,6 +18,7 @@
             --danger-color: #ff4757;
             --success-color: #2ed573;
             --warning-color: #ffa502;
+            --dark-color: #2f3542;
         }
 
         body {
@@ -46,6 +47,7 @@
             color: white;
             padding: 25px;
             position: relative;
+            transition: background 0.5s;
         }
 
         .header h1 {
@@ -89,9 +91,7 @@
             transition: transform 0.2s;
         }
 
-        .card:hover {
-            transform: translateY(-3px);
-        }
+        .card:hover { transform: translateY(-3px); }
 
         .card i {
             font-size: 30px;
@@ -111,43 +111,50 @@
             color: var(--text-color);
         }
 
-        .full-width {
-            grid-column: span 2;
-        }
+        .full-width { grid-column: span 2; }
 
-        /* สถานะเซนเซอร์ */
         .status-normal { color: var(--success-color) !important; }
         .status-danger { color: var(--danger-color) !important; }
 
-        /* ปุ่มควบคุม */
+        /* --- ส่วนปุ่มควบคุมที่แก้ไขใหม่ --- */
         .controls {
             padding: 20px;
             border-top: 1px solid #eee;
+            display: flex;           /* จัดเรียงแนวนอน */
+            gap: 10px;               /* ระยะห่างระหว่างปุ่ม */
+            justify-content: center;
         }
 
-        .btn-reset {
-            background: var(--danger-color);
-            color: white;
+        /* สไตล์ปุ่มทั่วไป */
+        .btn {
             border: none;
-            padding: 15px 30px;
+            padding: 15px 10px;
             border-radius: 50px;
-            font-size: 18px;
+            font-size: 16px;
             cursor: pointer;
-            width: 100%;
+            width: 100%; /* ให้ยืดเต็มพื้นที่ flex */
             font-family: 'Kanit', sans-serif;
-            box-shadow: 0 5px 15px rgba(255, 71, 87, 0.3);
+            color: white;
             transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }
 
-        .btn-reset:hover {
-            background: #ff2e40;
-            transform: scale(1.02);
+        .btn:hover { transform: scale(1.03); }
+        .btn:disabled { background: #ccc !important; cursor: not-allowed; transform: none; opacity: 0.7; }
+
+        /* ปุ่มปิดเสียง (สีแดง) */
+        .btn-stop {
+            background: var(--danger-color);
+            box-shadow: 0 5px 15px rgba(255, 71, 87, 0.3);
         }
-        
-        .btn-reset:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-            box-shadow: none;
+
+        /* ปุ่มรีเซ็ต (สีเทาเข้ม/น้ำเงิน) */
+        .btn-reset {
+            background: var(--dark-color);
+            box-shadow: 0 5px 15px rgba(47, 53, 66, 0.3);
         }
 
     </style>
@@ -182,15 +189,18 @@
             <div class="card full-width" style="display: flex; align-items: center; justify-content: center; gap: 15px;">
                 <i class="fas fa-volume-up" id="icon-buzzer"></i>
                 <div>
-                    <h3>สถานะเสียงแจ้งเตือน (Buzzer)</h3>
+                    <h3>สถานะเสียงแจ้งเตือน</h3>
                     <div class="value" id="buzzer-val">ปิดอยู่</div>
                 </div>
             </div>
         </div>
 
         <div class="controls">
-            <button class="btn-reset" id="btn-reset" onclick="resetSystem()">
-                <i class="fas fa-power-off"></i> ปิดเสียง / รีเซ็ตระบบ
+            <button class="btn btn-stop" id="btn-stop" onclick="stopSound()" disabled>
+                <i class="fas fa-volume-mute"></i> ปิดเสียง
+            </button>
+            <button class="btn btn-reset" id="btn-reset" onclick="resetSystem()">
+                <i class="fas fa-sync-alt"></i> รีเซ็ตระบบ
             </button>
         </div>
     </div>
@@ -199,18 +209,14 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
     <script>
-        // --- การตั้งค่า Firebase (จากโค้ด Arduino ของคุณ) ---
+        // --- ตั้งค่า Firebase ---
         const firebaseConfig = {
             databaseURL: "https://kun16-95305-default-rtdb.firebaseio.com"
-            // หมายเหตุ: ใน Web Client จริงๆ ไม่ควรใส่ Secret Key แต่เพื่อความง่ายในการทดสอบผมใช้แบบนี้ได้ครับ
-            // ถ้าจะให้ปลอดภัยต้องตั้ง Rules ใน Firebase Console
         };
-
-        // เริ่มต้น Firebase
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // อ้างอิงตัวแปรในหน้าเว็บ
+        // UI Elements
         const ui = {
             temp: document.getElementById('temp-val'),
             vib: document.getElementById('vib-val'),
@@ -221,22 +227,23 @@
             iconVib: document.getElementById('icon-vib'),
             iconSound: document.getElementById('icon-sound'),
             iconBuzzer: document.getElementById('icon-buzzer'),
+            btnStop: document.getElementById('btn-stop'),
             btnReset: document.getElementById('btn-reset')
         };
 
-        // --- อ่านข้อมูล Realtime ---
         const monitorRef = db.ref('/Monitor');
 
+        // --- อ่านข้อมูล Realtime ---
         monitorRef.on('value', (snapshot) => {
             const data = snapshot.val();
             if (!data) return;
 
-            // 1. อัปเดตอุณหภูมิ
+            // 1. อุณหภูมิ
             ui.temp.innerText = parseFloat(data.temp).toFixed(1) + " °C";
 
-            // 2. อัปเดตสถานะสั่นสะเทือน
+            // 2. สั่น
             if (data.vibrate) {
-                ui.vib.innerText = "⚠️ พบการสั่น!";
+                ui.vib.innerText = "พบการสั่น!";
                 ui.vib.className = "value status-danger";
                 ui.iconVib.className = "fas fa-radiation status-danger";
             } else {
@@ -245,9 +252,9 @@
                 ui.iconVib.className = "fas fa-wave-square status-normal";
             }
 
-            // 3. อัปเดตสถานะเสียง
-            if (data.sound_alert) { // ชื่อตัวแปรตามโค้ด Arduino
-                ui.sound.innerText = "⚠️ เสียงผิดปกติ!";
+            // 3. เสียง
+            if (data.sound_alert) {
+                ui.sound.innerText = "เสียงผิดปกติ!";
                 ui.sound.className = "value status-danger";
                 ui.iconSound.className = "fas fa-exclamation-triangle status-danger";
             } else {
@@ -256,20 +263,21 @@
                 ui.iconSound.className = "fas fa-microphone status-normal";
             }
 
-            // 4. ตรวจสอบสถานะการแจ้งเตือนรวม (Alert State)
+            // 4. สถานะรวม (Alert)
             if (data.alert) {
-                // ถ้า Alert เป็น True (กำลังแจ้งเตือน)
+                // แจ้งเตือน!
                 ui.header.className = "header alarm-active";
                 ui.status.innerText = "เกิดเหตุฉุกเฉิน!";
                 
-                ui.buzzer.innerText = "กำลังส่งเสียงดัง...";
+                ui.buzzer.innerText = "กำลังส่งเสียง...";
                 ui.buzzer.className = "value status-danger";
                 ui.iconBuzzer.className = "fas fa-volume-up status-danger";
                 
-                ui.btnReset.disabled = false;
-                ui.btnReset.innerText = "ปิดเสียงแจ้งเตือนเดี๋ยวนี้";
+                // เปิดให้กดปุ่ม "ปิดเสียง" ได้
+                ui.btnStop.disabled = false;
+                ui.btnStop.style.opacity = "1";
             } else {
-                // ถ้า Alert เป็น False (ปกติ)
+                // ปกติ
                 ui.header.className = "header";
                 ui.status.innerText = "สถานะปกติ";
                 
@@ -277,20 +285,28 @@
                 ui.buzzer.className = "value status-normal";
                 ui.iconBuzzer.className = "fas fa-volume-mute status-normal";
                 
-                ui.btnReset.disabled = true; // ปิดปุ่มถ้าไม่มีอะไรเกิดขึ้น
-                ui.btnReset.innerText = "ระบบปกติ";
+                // ปิดปุ่ม "ปิดเสียง" เพราะมันดับอยู่แล้ว
+                ui.btnStop.disabled = true;
             }
         });
 
-        // --- ฟังก์ชันปุ่ม Reset ---
+        // --- ฟังก์ชัน 1: ปิดเสียง (Stop Buzzer Only) ---
+        function stopSound() {
+            // ส่งค่า alert = false เพื่อหยุด Buzzer ที่ Arduino
+            db.ref('/Monitor/alert').set(false).then(() => {
+                alert("สั่งปิดเสียงเรียบร้อย!");
+            });
+        }
+
+        // --- ฟังก์ชัน 2: รีเซ็ตระบบ (Reset All Status) ---
         function resetSystem() {
-            // ส่งค่า false กลับไปที่ Firebase เพื่อให้ Arduino หยุดเสียง
-            db.ref('/Monitor/alert').set(false)
-            .then(() => {
-                alert("ส่งคำสั่งปิดเสียงเรียบร้อย!");
-            })
-            .catch((error) => {
-                alert("เกิดข้อผิดพลาด: " + error.message);
+            // เคลียร์ค่าสถานะทั้งหมดให้กลับเป็นปกติ (สีเขียว)
+            db.ref('/Monitor').update({
+                alert: false,
+                vibrate: false,
+                sound_alert: false
+            }).then(() => {
+                alert("รีเซ็ตสถานะระบบเรียบร้อย!");
             });
         }
 
