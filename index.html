@@ -3,57 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Earthquake Monitor V2</title>
-    
+    <title>Monitor V2</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600&display=swap" rel="stylesheet">
-
     <style>
-        /* CSS พื้นฐาน */
-        body { font-family: 'Kanit', sans-serif; background-color: #0f172a; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-        .card { background: #1e293b; padding: 30px; border-radius: 20px; width: 90%; max-width: 400px; text-align: center; border: 1px solid #334155; }
-        .row { display: flex; align-items: center; justify-content: space-between; background: #334155; padding: 15px; margin-bottom: 15px; border-radius: 10px; }
-        .icon { font-size: 24px; width: 40px; }
-        .text-yellow { color: #FDB813; } /* สีเหลือง */
-        .text-gray { color: #94a3b8; }   /* สีเทา */
-        .text-red { color: #ef4444; animation: blink 1s infinite; } /* สีแดงกระพริบ */
-        .text-green { color: #22c55e; } /* สีเขียว */
-        button { width: 100%; padding: 15px; background: #22c55e; border: none; border-radius: 10px; color: white; font-size: 18px; cursor: pointer; }
+        body { font-family: 'Kanit', sans-serif; background-color: #0f172a; color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .card { background: #1e293b; padding: 30px; border-radius: 20px; width: 100%; max-width: 400px; text-align: center; border: 1px solid #334155; }
+        .box { background: #334155; padding: 15px; margin-bottom: 15px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; }
+        .val { font-size: 20px; font-weight: bold; }
+        .bright { color: #FDB813; } /* เหลือง */
+        .dark { color: #94a3b8; }   /* เทา */
+        .alert { color: #ef4444; animation: blink 1s infinite; }
         @keyframes blink { 50% { opacity: 0.5; } }
     </style>
 </head>
 <body>
-
-    <h1 style="color: #38bdf8;">ระบบตรวจสอบความปลอดภัย</h1>
-
     <div class="card">
-        <div class="row">
-            <i class="fas fa-temperature-half icon" style="color:#38bdf8;"></i>
-            <div style="text-align: right;">
-                <div style="font-size: 12px; color: #cbd5e1;">อุณหภูมิ</div>
-                <div id="temp" style="font-size: 20px; font-weight: bold;">-- °C</div>
-            </div>
+        <h2 style="color:#38bdf8;">ระบบแจ้งเตือน</h2>
+        
+        <div class="box">
+            <span><i class="fas fa-temperature-half"></i> อุณหภูมิ</span>
+            <span id="temp" class="val">--</span>
         </div>
 
-        <div class="row">
-            <i id="icon-light" class="fas fa-lightbulb icon text-gray"></i>
-            <div style="text-align: right;">
-                <div style="font-size: 12px; color: #cbd5e1;">สภาพแสง</div>
-                <div id="light" style="font-size: 20px; font-weight: bold;">รอค่า...</div>
-            </div>
+        <div class="box">
+            <span><i id="icon-light" class="fas fa-lightbulb"></i> แสง</span>
+            <span id="light" class="val">รอค่า...</span>
         </div>
 
-        <div class="row">
-            <i id="icon-vibe" class="fas fa-wave-square icon text-green"></i>
-            <div style="text-align: right;">
-                <div style="font-size: 12px; color: #cbd5e1;">การสั่นสะเทือน</div>
-                <div id="vibe" style="font-size: 20px; font-weight: bold;">ปกติ</div>
-            </div>
+        <div class="box">
+            <span><i id="icon-vibe" class="fas fa-wave-square"></i> การสั่น</span>
+            <span id="vibe" class="val">ปกติ</span>
         </div>
 
-        <button onclick="resetSystem()">รีเซ็ตระบบ</button>
+        <button onclick="resetSystem()" style="width:100%; padding:15px; background:#22c55e; border:none; border-radius:10px; color:white; font-size:18px;">รีเซ็ตระบบ</button>
     </div>
 
     <script>
@@ -72,42 +57,34 @@
             // 1. อุณหภูมิ
             document.getElementById("temp").innerText = (data.temp || 0).toFixed(1) + " °C";
 
-            // 2. แสง (ใช้ตรรกะ Arduino D3: 1=มืด, 0=สว่าง)
+            // 2. แสง (0=สว่าง, 1=มืด)
             const lightEl = document.getElementById("light");
-            const iconEl = document.getElementById("icon-light");
-            let val = data.light_value; 
-
-            if (val == 0) {
-                // ถ้าเป็น 0 คือ สว่าง
+            const iconLight = document.getElementById("icon-light");
+            
+            if (data.light_value == 0) { 
                 lightEl.innerText = "สว่าง";
-                lightEl.className = "text-yellow";
-                iconEl.className = "fas fa-sun icon text-yellow";
+                lightEl.className = "val bright";
+                iconLight.className = "fas fa-sun bright";
             } else {
-                // ถ้าเป็น 1 (หรืออื่นๆ) คือ มืด
-                lightEl.innerText = "มืด / ปกติ";
-                lightEl.className = "text-gray";
-                iconEl.className = "fas fa-moon icon text-gray";
+                lightEl.innerText = "มืด";
+                lightEl.className = "val dark";
+                iconLight.className = "fas fa-moon dark";
             }
 
             // 3. สั่นสะเทือน
             const vibeEl = document.getElementById("vibe");
-            const iconVibe = document.getElementById("icon-vibe");
             if (data.vibrate == true) {
                 vibeEl.innerText = "แผ่นดินไหว!";
-                vibeEl.className = "text-red";
-                iconVibe.className = "fas fa-house-crack icon text-red";
+                vibeEl.className = "val alert";
             } else {
                 vibeEl.innerText = "ปกติ";
-                vibeEl.className = "text-green";
-                iconVibe.className = "fas fa-wave-square icon text-green";
+                vibeEl.className = "val";
             }
         });
 
         function resetSystem() {
             db.ref("Monitor").update({ alert: false, vibrate: false });
-            alert("สั่งรีเซ็ตแล้ว");
         }
     </script>
-
 </body>
 </html>
