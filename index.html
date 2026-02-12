@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Earthquake & Light Dashboard</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --primary-color: #38bdf8;
+            --danger-color: #ef4444;
+            --success-color: #22c55e;
+            --warning-color: #f59e0b;
+        }
+
+        body {
+            font-family: 'Kanit', sans-serif;
+            background-color: var(--bg-color);
+            color: #f8fafc;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 480px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .header h2 {
+            font-weight: 600;
+            text-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
+        }
+
+        /* --- Main Card Styling --- */
+        .status-card {
+            background: var(--card-bg);
+            padding: 30px;
+            border-radius: 24px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            text-align: center;
+            border: 1px solid #334155;
+            transition: all 0.5s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* --- Status Badge --- */
+        .status-badge {
+            padding: 12px 24px;
+            border-radius: 50px;
+            font-size: 20px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 25px;
+            width: 80%;
+            justify-content: center;
+            transition: 0.3s;
+        }
+        .bg-normal { background: rgba(34, 197, 94, 0.2); color: var(--success-color); border: 1px solid var(--success-color); }
+        .bg-alert { background: rgba(239, 68, 68, 0.2); color: var(--danger-color); border: 1px solid var(--danger-color); }
+
+        /* --- Sensor Grid --- */
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 15px;
+            margin-top: 10px;
+        }
+        
+        .sensor-item {
+            background: #334155;
+            padding: 20px;
+            border-radius: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transition: 0.3s;
+            border: 1px solid transparent;
+        }
+
+        .sensor-item i { font-size: 28px; margin-bottom: 10px; color: var(--primary-color); }
+        .val { font-size: 22px; font-weight: bold; margin-top: 5px; }
+        .label { font-size: 14px; color: #94a3b8; }
+
+        /* --- Alert Animation --- */
+        .alert-active {
+            border: 2px solid var(--danger-color);
+            animation: pulse 1.5s infinite;
+        }
+        .alert-text { color: var(--danger-color) !important; }
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 20px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+
+        /* --- Buttons --- */
+        .btn-group {
+            margin-top: 30px;
+        }
+        
+        button {
+            width: 100%;
+            padding: 18px;
+            border: none;
+            border-radius: 16px;
+            font-size: 18px;
+            font-family: 'Kanit', sans-serif;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: 0.2s;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+
+        .btn-reset {
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+            color: white;
+        }
+        .btn-reset:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(34, 197, 94, 0.4); }
+        .btn-reset:active { transform: scale(0.98); }
+
+        .loading { font-size: 14px; color: #64748b; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.5; } }
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header">
+            <h2><i class="fas fa-tower-broadcast"></i> Earthquake & Light Monitor</h2>
+        </div>
+
+        <div id="mainCard" class="status-card">
+            <div id="statusBadge" class="status-badge bg-normal">
+                <span class="loading">กำลังเชื่อมต่อ...</span>
+            </div>
+            
+            <div class="grid">
+                <div class="sensor-item">
+                    <i class="fas fa-temperature-half"></i>
+                    <span class="label">อุณหภูมิ</span>
+                    <span id="temp" class="val">-- °C</span>
+                </div>
+
+                <div class="sensor-item">
+                    <i id="icon-light" class="fas fa-lightbulb"></i>
+                    <span class="label">ตรวจจับแสง</span>
+                    <span id="light" class="val">ปกติ</span>
+                </div>
+
+                <div class="sensor-item">
+                    <i id="icon-vibe" class="fas fa-wave-square"></i>
+                    <span class="label">การสั่นสะเทือน</span>
+                    <span id="vibe" class="val">ปกติ</span>
+                </div>
+            </div>
+
+            <div class="btn-group">
+                <button class="btn-reset" onclick="resetSystem()">
+                    <i class="fas fa-power-off"></i> รีเซ็ตระบบ / ปิดเสียง
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 1. ตั้งค่า Firebase (ต้องตรงกับ Arduino)
+        // ** สำคัญ: คุณต้องเอา API KEY จาก Firebase Console มาใส่ตรงนี้ **
+        // ไปที่ Project Settings > General > เลื่อนลงมาล่างสุด > SDK Setup and Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyAlPqcIYDYfRBYwnOKJ4n4KzNLvEEl5x64",  // <-- ใส่ API Key ของคุณตรงนี้ (ถ้ามี)
+            databaseURL: "https://kun16-95305-default-rtdb.firebaseio.com",
+            projectId: "kun16-95305"
+        };
+
+        // เริ่มต้น Firebase
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.database();
+
+        // 2. ฟังก์ชันอ่านข้อมูล Real-time
+        db.ref("Monitor").on("value", (snapshot) => {
+            const data = snapshot.val();
+            if(!data) return;
+
+            // Helper function เช็คค่า true/false หรือ 1/0
+            const isTrue = (val) => val === true || val === "true" || val == 1;
+
+            // --- อัปเดตอุณหภูมิ ---
+            document.getElementById("temp").innerText = (data.temp || 0).toFixed(1) + " °C";
+
+            // --- อัปเดตสถานะแสง ---
+            const lightEl = document.getElementById("light");
+            const iconLight = document.getElementById("icon-light");
+            
+            if (isTrue(data.light_alert)) {
+                lightEl.innerText = "🚨 พบแสงสว่าง!";
+                lightEl.className = "val alert-text";
+                iconLight.className = "fas fa-sun alert-text";
+            } else {
+                lightEl.innerText = "มืด / ปกติ";
+                lightEl.className = "val";
+                iconLight.className = "fas fa-moon";
+                iconLight.style.color = "#38bdf8";
+            }
+
+            // --- อัปเดตสถานะการสั่น ---
+            const vibeEl = document.getElementById("vibe");
+            const iconVibe = document.getElementById("icon-vibe");
+
+            if (isTrue(data.vibrate)) {
+                vibeEl.innerText = "🚨 แผ่นดินไหว!";
+                vibeEl.className = "val alert-text";
+                iconVibe.className = "fas fa-house-crack alert-text";
+            } else {
+                vibeEl.innerText = "ปกติ";
+                vibeEl.className = "val";
+                iconVibe.className = "fas fa-wave-square";
+                iconVibe.style.color = "#38bdf8";
+            }
+
+            // --- จัดการสถานะหลัก (Main Card & Buzzer) ---
+            const badge = document.getElementById("statusBadge");
+            const card = document.getElementById("mainCard");
+
+            // เช็คว่ามีการแจ้งเตือนค้างอยู่หรือไม่ (data.alert = true)
+            if (isTrue(data.alert)) {
+                badge.innerHTML = `<i class="fas fa-triangle-exclamation"></i> ตรวจพบเหตุผิดปกติ!`;
+                badge.className = "status-badge bg-alert";
+                
+                // เพิ่ม Effect ให้การ์ด
+                card.classList.add("alert-active");
+            } else {
+                badge.innerHTML = `<i class="fas fa-shield-halved"></i> ระบบปกติ`;
+                badge.className = "status-badge bg-normal";
+                
+                // ลบ Effect
+                card.classList.remove("alert-active");
+            }
+        });
+
+        // 3. ฟังก์ชันรีเซ็ตระบบ
+        function resetSystem() {
+            // ส่งค่า alert = false ไปที่ Firebase เพื่อให้ Arduino หยุดร้อง
+            db.ref("Monitor").update({
+                alert: false,
+                vibrate: false,
+                light_alert: false
+            }).then(() => {
+                alert("รีเซ็ตระบบเรียบร้อย!");
+            }).catch((error) => {
+                alert("เกิดข้อผิดพลาด: " + error.message);
+            });
+        }
+    </script>
+</body>
+</html>
