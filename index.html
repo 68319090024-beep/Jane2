@@ -92,16 +92,15 @@
         .status-normal { color: var(--success-color) !important; }
         .status-danger { color: var(--danger-color) !important; }
 
-        /* --- ส่วนปุ่มควบคุม (แก้ไขใหม่ตามสั่ง) --- */
         .controls {
             padding: 20px;
             border-top: 1px solid #eee;
-            display: flex;          /* เรียงแนวนอน */
-            gap: 15px;              /* เว้นระยะห่างระหว่างปุ่ม */
+            display: flex;
+            gap: 15px;
         }
 
         .btn {
-            flex: 1;                /* ให้ปุ่มขยายเต็มพื้นที่เท่ากัน */
+            flex: 1;
             border: none;
             padding: 15px 0;
             border-radius: 50px;
@@ -118,20 +117,17 @@
 
         .btn:active { transform: scale(0.95); }
 
-        /* ปุ่มปิดเสียง (สีแดง) */
         .btn-stop {
             background-color: var(--danger-color);
             box-shadow: 0 5px 15px rgba(255, 71, 87, 0.3);
             opacity: 0.5;
             cursor: not-allowed;
         }
-        /* ถ้าเปิดใช้งานปุ่มหยุด */
         .btn-stop.active {
             opacity: 1;
             cursor: pointer;
         }
 
-        /* ปุ่มรีเซ็ต (สีเทาเข้ม) */
         .btn-reset {
             background-color: var(--dark-btn);
             box-shadow: 0 5px 15px rgba(47, 53, 66, 0.3);
@@ -166,7 +162,7 @@
                 <div class="value" id="sound-val">ปกติ</div>
             </div>
             
-            <div class="card full-width">
+             <div class="card full-width">
                 <i class="fas fa-volume-up" id="icon-buzzer"></i>
                 <h3>สถานะเสียงแจ้งเตือน (Buzzer)</h3>
                 <div class="value" id="buzzer-val">ปิดอยู่</div>
@@ -175,10 +171,10 @@
 
         <div class="controls">
             <button class="btn btn-stop" id="btn-stop" onclick="stopSound()" disabled>
-                <i class="fas fa-volume-mute"></i> ปิดเสียง
+                <i class="fas fa-power-off"></i> ปิดเสียง & คืนค่า
             </button>
             
-            <button class="btn btn-reset" onclick="resetSystem()">
+            <button class="btn btn-reset" onclick="stopSound()">
                 <i class="fas fa-redo-alt"></i> รีเซ็ตระบบ
             </button>
         </div>
@@ -188,14 +184,12 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
     <script>
-        // Config Firebase
         const firebaseConfig = {
             databaseURL: "https://kun16-95305-default-rtdb.firebaseio.com"
         };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // UI Variables
         const ui = {
             temp: document.getElementById('temp-val'),
             vib: document.getElementById('vib-val'),
@@ -206,18 +200,15 @@
             iconVib: document.getElementById('icon-vib'),
             iconSound: document.getElementById('icon-sound'),
             iconBuzzer: document.getElementById('icon-buzzer'),
-            btnStop: document.getElementById('btn-stop') // ปุ่มปิดเสียง
+            btnStop: document.getElementById('btn-stop')
         };
 
-        // Realtime Data
         db.ref('/Monitor').on('value', (snapshot) => {
             const data = snapshot.val();
             if (!data) return;
 
-            // 1. อุณหภูมิ
             ui.temp.innerText = parseFloat(data.temp).toFixed(1) + " °C";
 
-            // 2. สั่น
             if (data.vibrate) {
                 ui.vib.innerText = "⚠️ พบการสั่น!";
                 ui.vib.className = "value status-danger";
@@ -228,7 +219,6 @@
                 ui.iconVib.className = "fas fa-wave-square status-normal";
             }
 
-            // 3. เสียง
             if (data.sound_alert) {
                 ui.sound.innerText = "⚠️ เสียงผิดปกติ!";
                 ui.sound.className = "value status-danger";
@@ -239,9 +229,7 @@
                 ui.iconSound.className = "fas fa-microphone status-normal";
             }
 
-            // 4. แจ้งเตือน (Alert) และ ปุ่มปิดเสียง
             if (data.alert) {
-                // ถ้า Alert ทำงาน
                 ui.header.className = "header alarm-active";
                 ui.status.innerText = "เกิดเหตุฉุกเฉิน!";
                 
@@ -249,12 +237,11 @@
                 ui.buzzer.className = "value status-danger";
                 ui.iconBuzzer.className = "fas fa-volume-up status-danger";
 
-                // เปิดใช้งานปุ่ม "ปิดเสียง"
                 ui.btnStop.disabled = false;
                 ui.btnStop.classList.add('active'); 
+                ui.btnStop.innerHTML = '<i class="fas fa-power-off"></i> ปิดเสียง & คืนค่า';
 
             } else {
-                // ถ้าปกติ
                 ui.header.className = "header";
                 ui.status.innerText = "สถานะปกติ";
                 
@@ -262,19 +249,14 @@
                 ui.buzzer.className = "value status-normal";
                 ui.iconBuzzer.className = "fas fa-volume-mute status-normal";
 
-                // ปิดการใช้งานปุ่ม "ปิดเสียง" (กดไม่ได้)
                 ui.btnStop.disabled = true;
                 ui.btnStop.classList.remove('active');
             }
         });
 
-        // ฟังก์ชันปุ่ม 1: ปิดเสียงอย่างเดียว (ค่าหน้าเว็บยังแดงอยู่ เพื่อให้รู้ว่าเคยเกิดเหตุ)
+        // ฟังก์ชันเดียว คุมทั้งสองปุ่ม
+        // กดแล้ว สั่งปิดเสียง + เคลียร์ค่าทั้งหมดให้เป็นปกติ
         function stopSound() {
-            db.ref('/Monitor/alert').set(false);
-        }
-
-        // ฟังก์ชันปุ่ม 2: รีเซ็ตทุกอย่าง (ปิดเสียง + เคลียร์ค่าหน้าเว็บเป็นสีเขียว)
-        function resetSystem() {
             db.ref('/Monitor').update({
                 alert: false,
                 vibrate: false,
