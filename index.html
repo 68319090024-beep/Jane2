@@ -1,269 +1,176 @@
-<!DOCTYPE html>
-<html lang="th">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ระบบเฝ้าระวังภัย (IoT Monitor)</title>
-    
-    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600&display=swap" rel="stylesheet">
-    
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+/*************************************************
+ * ระบบเฝ้าระวัง: แผ่นดินไหว + ความชื้นในดิน (Soil)
+ *************************************************/
+#include <ESP8266WiFi.h>
+#include <WiFiClientSecure.h>
+#include <UniversalTelegramBot.h>
+#include <ArduinoJson.h>
+#include <FirebaseESP8266.h>
+#include <ESP8266WebServer.h>
+#include "DHT.h"
 
-    <style>
-        :root {
-            --bg-color: #f4f6f9;
-            --card-bg: #ffffff;
-            --text-color: #333;
-            --primary-color: #4a90e2;
-            --danger-color: #ff4757;
-            --success-color: #2ed573;
-            --dark-btn: #2f3542;
-        }
+/* ===== WiFi & Cloud Config ===== */
+const char* ssid = "Jane";
+const char* password = "0821926943";
+#define BOT_TOKEN "8554659037:AAEx9DWoUNk1FlG6m_aZvat7dKlMWiOfkOQ"
+#define CHAT_ID "-1003695024067"
+#define FIREBASE_HOST "kun16-95305-default-rtdb.firebaseio.com"
+#define FIREBASE_AUTH "JzYsdDN0mMtzTIzbxcPKzc98pbmf0yK2bg57HxoF"
 
-        body {
-            font-family: 'Kanit', sans-serif;
-            background-color: var(--bg-color);
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-        }
+/* ===== Hardware Pins ===== */
+#define VIB_PIN D2
+#define SOIL_PIN A0  // เปลี่ยนจาก SND_PIN เป็น SOIL_PIN (ใช้ขา Analog เดียวกัน)
+#define DHT_PIN D6
+#define BZ_PIN  D7
+#define DHTTYPE DHT11
 
-        .dashboard {
-            width: 100%;
-            max-width: 500px;
-            background: var(--card-bg);
-            border-radius: 20px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-            overflow: hidden;
-            text-align: center;
-        }
+/* ===== Settings ===== */
+// ตั้งค่าเกณฑ์ความชื้นสำหรับการแจ้งเตือน
+const int SOIL_ALERT_THRESHOLD = 30; // ถ้าความชื้นต่ำกว่า 30% ให้แจ้งเตือน (ดินแห้ง)
 
-        .header {
-            background: var(--primary-color);
-            color: white;
-            padding: 25px;
-            position: relative;
-            transition: background 0.3s;
-        }
+/* ===== Objects ===== */
+DHT dht(DHT_PIN, DHTTYPE);
+ESP8266WebServer server(80);
+FirebaseData firebaseData;
+FirebaseConfig config;
+FirebaseAuth auth;
+WiFiClientSecure client;
+UniversalTelegramBot bot(BOT_TOKEN, client);
 
-        .header.alarm-active {
-            background: var(--danger-color);
-            animation: pulse 1.5s infinite;
-        }
+/* ===== Control Variables ===== */
+bool alertLocked = false;
+unsigned long lastTempUpdate = 0; 
+const int updateInterval = 2000; 
 
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.7); }
-            70% { box-shadow: 0 0 0 15px rgba(255, 71, 87, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0); }
-        }
+void setup() {
+  Serial.begin(9600);
 
-        .header h1 { margin: 0; font-size: 24px; }
-        .status-badge {
-            margin-top: 10px;
-            display: inline-block;
-            background: rgba(255,255,255,0.2);
-            padding: 5px 15px;
-            border-radius: 50px;
-            font-size: 14px;
-        }
+  pinMode(VIB_PIN, INPUT);
+  // pinMode(SOIL_PIN, INPUT); // A0 ไม่ต้องประกาศ pinMode ใน ESP8266 ก็ได้
+  pinMode(BZ_PIN, OUTPUT);
+  digitalWrite(BZ_PIN, HIGH); // ปิดบัสเซอร์
 
-        .content {
-            padding: 20px;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-        }
+  dht.begin();
 
-        .card {
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 15px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-        }
-        .full-width { grid-column: span 2; }
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi Connected");
+  Serial.println(WiFi.localIP());
 
-        .card i { font-size: 30px; margin-bottom: 10px; color: var(--primary-color); }
-        .card h3 { margin: 5px 0; font-size: 16px; color: #777; }
-        .card .value { font-size: 22px; font-weight: 600; color: var(--text-color); }
+  // ===== ตั้งค่า Telegram =====
+  client.setInsecure();
+  client.setTimeout(15000);
+  client.setBufferSizes(1024, 1024);
 
-        .status-normal { color: var(--success-color) !important; }
-        .status-danger { color: var(--danger-color) !important; }
+  // ===== ตั้งค่า Firebase =====
+  config.host = FIREBASE_HOST;
+  config.signer.tokens.legacy_token = FIREBASE_AUTH;
+  Firebase.begin(&config, &auth);
+}
 
-        .controls {
-            padding: 20px;
-            border-top: 1px solid #eee;
-            display: flex;
-            gap: 15px;
-        }
+void loop() {
+  // ========================================================
+  // 1. อ่านค่าเซนเซอร์
+  // ========================================================
+  int v = digitalRead(VIB_PIN); // อ่านค่าสั่น (Digital)
+  
+  // อ่านค่าความชื้น (Analog)
+  int soilRaw = analogRead(SOIL_PIN); 
+  // แปลงค่า Analog (0-1024) เป็นเปอร์เซ็นต์ (0-100%)
+  // หมายเหตุ: เซนเซอร์ส่วนใหญ่ 1024=แห้งสนิท, 0=เปียกน้ำ (ต้อง map กลับด้าน)
+  int soilPercent = map(soilRaw, 1024, 0, 0, 100); 
+  
+  // กันค่าเกินขอบเขต
+  if(soilPercent < 0) soilPercent = 0;
+  if(soilPercent > 100) soilPercent = 100;
 
-        .btn {
-            flex: 1;
-            border: none;
-            padding: 15px 0;
-            border-radius: 50px;
-            font-size: 18px;
-            cursor: pointer;
-            font-family: 'Kanit', sans-serif;
-            color: white;
-            transition: transform 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
+  float t = dht.readTemperature(); 
+  if (isnan(t)) t = 0.0;
 
-        .btn:active { transform: scale(0.95); }
+  // ========================================================
+  // 2. เช็คสถานะจาก Firebase (เพื่อดูว่ามีคนกดปุ่มรีเซ็ตไหม)
+  // ========================================================
+  bool webAlert = false;
+  bool webVibStatus = false;
+  bool webSoilStatus = false; // เปลี่ยนตัวแปรมารับค่า Soil
 
-        .btn-stop {
-            background-color: var(--danger-color);
-            box-shadow: 0 5px 15px rgba(255, 71, 87, 0.3);
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        .btn-stop.active {
-            opacity: 1;
-            cursor: pointer;
-        }
+  if (Firebase.getBool(firebaseData, "/Monitor/alert")) {
+    webAlert = firebaseData.boolData();
+  }
+  if (Firebase.getBool(firebaseData, "/Monitor/vibrate")) {
+    webVibStatus = firebaseData.boolData();
+  }
+  // เปลี่ยน Key ใน Firebase เป็น soil_alert
+  if (Firebase.getBool(firebaseData, "/Monitor/soil_alert")) {
+    webSoilStatus = firebaseData.boolData();
+  }
 
-        .btn-reset {
-            background-color: var(--dark-btn);
-            box-shadow: 0 5px 15px rgba(47, 53, 66, 0.3);
-        }
+  // ถ้าหน้าเว็บเป็น False ทั้งหมด (Reset)
+  if (webAlert == false && webVibStatus == false && webSoilStatus == false) {
+      digitalWrite(BZ_PIN, HIGH); // ปิดเสียง
+      
+      if (alertLocked == true) {
+          alertLocked = false; 
+          Serial.println("System Reset: Ready to monitor again.");
+      }
+  }
 
-    </style>
-</head>
-<body>
+  // ========================================================
+  // 3. ส่วนตรวจจับเหตุผิดปกติ 
+  // ========================================================
+  if (!alertLocked) {
+    // เงื่อนไข: สั่น (HIGH) หรือ ความชื้นต่ำกว่าเกณฑ์ (ดินแห้ง)
+    if (v == HIGH || soilPercent < SOIL_ALERT_THRESHOLD) { 
+      
+      alertLocked = true;         
+      digitalWrite(BZ_PIN, LOW);  // เปิดบัสเซอร์
+      Serial.println("ALARM TRIGGERED!");
 
-    <div class="dashboard">
-        <div class="header" id="header-bg">
-            <h1><i class="fas fa-shield-alt"></i> ระบบเฝ้าระวังภัย</h1>
-            <div class="status-badge" id="system-status">สถานะปกติ</div>
-        </div>
+      // --- ส่งค่าขึ้น Firebase ---
+      Firebase.setBool(firebaseData, "/Monitor/alert", true);
+      // ส่งสถานะว่าแจ้งเตือนเพราะดินแห้งใช่หรือไม่
+      Firebase.setBool(firebaseData, "/Monitor/soil_alert", (soilPercent < SOIL_ALERT_THRESHOLD)); 
+      Firebase.setBool(firebaseData, "/Monitor/vibrate", (v == HIGH));
+      Firebase.setFloat(firebaseData, "/Monitor/temp", t);
+      Firebase.setInt(firebaseData, "/Monitor/soil_value", soilPercent); // ส่งค่าความชื้นขึ้นไปด้วย
 
-        <div class="content">
-            <div class="card full-width">
-                <i class="fas fa-thermometer-half"></i>
-                <h3>อุณหภูมิ</h3>
-                <div class="value" id="temp-val">-- °C</div>
-            </div>
+      // --- ส่ง Telegram ---
+      String msg = "⚠️ แจ้งเตือนภัย!\n";
+      msg += "🌡 อุณหภูมิ: " + String(t, 2) + " °C\n";
+      
+      if (v == HIGH) {
+        msg += "⚡ การสั่น:  พบการสั่น!\n";
+      } else {
+        msg += "⚡ การสั่น: ปกติ\n";
+      }
 
-            <div class="card">
-                <i class="fas fa-wave-square" id="icon-vib"></i>
-                <h3>การสั่นสะเทือน</h3>
-                <div class="value" id="vib-val">ปกติ</div>
-            </div>
+      // เปลี่ยนข้อความแจ้งเตือนความชื้น
+      msg += "🌱 ความชื้น: " + String(soilPercent) + "%";
+      if (soilPercent < SOIL_ALERT_THRESHOLD) {
+        msg += " (ต่ำกว่าเกณฑ์!)\n";
+      } else {
+        msg += " (ปกติ)\n";
+      }
+      
+      if (WiFi.status() == WL_CONNECTED) {
+        bot.sendMessage(CHAT_ID, msg, "");
+        Serial.println("Telegram Sent!");
+      }
+    }
+  }
 
-            <div class="card">
-                <i class="fas fa-microphone" id="icon-sound"></i>
-                <h3>เสียง</h3>
-                <div class="value" id="sound-val">ปกติ</div>
-            </div>
-            
-             <div class="card full-width">
-                <i class="fas fa-volume-up" id="icon-buzzer"></i>
-                <h3>สถานะเสียงแจ้งเตือน (Buzzer)</h3>
-                <div class="value" id="buzzer-val">ปิดอยู่</div>
-            </div>
-        </div>
+  // ========================================================
+  // 4. อัปเดตข้อมูลขึ้น Firebase เรื่อยๆ (Real-time)
+  // ========================================================
+  if (millis() - lastTempUpdate > updateInterval) {
+    lastTempUpdate = millis();
+    Firebase.setFloat(firebaseData, "/Monitor/temp", t);
+    // เพิ่มการส่งค่าความชื้นขึ้นไปโชว์ตลอดเวลา
+    Firebase.setInt(firebaseData, "/Monitor/soil_value", soilPercent);
+  }
 
-        <div class="controls">
-            <button class="btn btn-stop" id="btn-stop" onclick="stopSound()" disabled>
-                <i class="fas fa-power-off"></i> ปิดเสียง & คืนค่า
-            </button>
-            
-            <button class="btn btn-reset" onclick="stopSound()">
-                <i class="fas fa-redo-alt"></i> รีเซ็ตระบบ
-            </button>
-        </div>
-    </div>
-
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-
-    <script>
-        const firebaseConfig = {
-            databaseURL: "https://kun16-95305-default-rtdb.firebaseio.com"
-        };
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
-
-        const ui = {
-            temp: document.getElementById('temp-val'),
-            vib: document.getElementById('vib-val'),
-            sound: document.getElementById('sound-val'),
-            buzzer: document.getElementById('buzzer-val'),
-            header: document.getElementById('header-bg'),
-            status: document.getElementById('system-status'),
-            iconVib: document.getElementById('icon-vib'),
-            iconSound: document.getElementById('icon-sound'),
-            iconBuzzer: document.getElementById('icon-buzzer'),
-            btnStop: document.getElementById('btn-stop')
-        };
-
-        db.ref('/Monitor').on('value', (snapshot) => {
-            const data = snapshot.val();
-            if (!data) return;
-
-            ui.temp.innerText = parseFloat(data.temp).toFixed(1) + " °C";
-
-            if (data.vibrate) {
-                ui.vib.innerText = "⚠️ พบการสั่น!";
-                ui.vib.className = "value status-danger";
-                ui.iconVib.className = "fas fa-radiation status-danger";
-            } else {
-                ui.vib.innerText = "ปกติ";
-                ui.vib.className = "value status-normal";
-                ui.iconVib.className = "fas fa-wave-square status-normal";
-            }
-
-            if (data.sound_alert) {
-                ui.sound.innerText = "⚠️ เสียงผิดปกติ!";
-                ui.sound.className = "value status-danger";
-                ui.iconSound.className = "fas fa-exclamation-triangle status-danger";
-            } else {
-                ui.sound.innerText = "ปกติ";
-                ui.sound.className = "value status-normal";
-                ui.iconSound.className = "fas fa-microphone status-normal";
-            }
-
-            if (data.alert) {
-                ui.header.className = "header alarm-active";
-                ui.status.innerText = "เกิดเหตุฉุกเฉิน!";
-                
-                ui.buzzer.innerText = "กำลังส่งเสียง...";
-                ui.buzzer.className = "value status-danger";
-                ui.iconBuzzer.className = "fas fa-volume-up status-danger";
-
-                ui.btnStop.disabled = false;
-                ui.btnStop.classList.add('active'); 
-                ui.btnStop.innerHTML = '<i class="fas fa-power-off"></i> ปิดเสียง & คืนค่า';
-
-            } else {
-                ui.header.className = "header";
-                ui.status.innerText = "สถานะปกติ";
-                
-                ui.buzzer.innerText = "ปิดอยู่";
-                ui.buzzer.className = "value status-normal";
-                ui.iconBuzzer.className = "fas fa-volume-mute status-normal";
-
-                ui.btnStop.disabled = true;
-                ui.btnStop.classList.remove('active');
-            }
-        });
-
-        // ฟังก์ชันเดียว คุมทั้งสองปุ่ม
-        // กดแล้ว สั่งปิดเสียง + เคลียร์ค่าทั้งหมดให้เป็นปกติ
-        function stopSound() {
-            db.ref('/Monitor').update({
-                alert: false,
-                vibrate: false,
-                sound_alert: false
-            });
-        }
-
-    </script>
-</body>
-</html>
+  delay(100); 
+}
