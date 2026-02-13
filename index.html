@@ -1,176 +1,217 @@
-/*************************************************
- * ระบบเฝ้าระวัง: แผ่นดินไหว + ความชื้นในดิน (Soil)
- *************************************************/
-#include <ESP8266WiFi.h>
-#include <WiFiClientSecure.h>
-#include <UniversalTelegramBot.h>
-#include <ArduinoJson.h>
-#include <FirebaseESP8266.h>
-#include <ESP8266WebServer.h>
-#include "DHT.h"
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Safety Monitor</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <style>
+        body {
+            font-family: 'Prompt', sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            color: #333;
+            transition: background-color 0.5s;
+        }
 
-/* ===== WiFi & Cloud Config ===== */
-const char* ssid = "Jane";
-const char* password = "0821926943";
-#define BOT_TOKEN "8554659037:AAEx9DWoUNk1FlG6m_aZvat7dKlMWiOfkOQ"
-#define CHAT_ID "-1003695024067"
-#define FIREBASE_HOST "kun16-95305-default-rtdb.firebaseio.com"
-#define FIREBASE_AUTH "JzYsdDN0mMtzTIzbxcPKzc98pbmf0yK2bg57HxoF"
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            width: 90%;
+            max-width: 400px;
+            text-align: center;
+        }
 
-/* ===== Hardware Pins ===== */
-#define VIB_PIN D2
-#define SOIL_PIN A0  // เปลี่ยนจาก SND_PIN เป็น SOIL_PIN (ใช้ขา Analog เดียวกัน)
-#define DHT_PIN D6
-#define BZ_PIN  D7
-#define DHTTYPE DHT11
+        /* สถานะระบบ */
+        .status-card {
+            padding: 15px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            color: white;
+            font-weight: bold;
+            font-size: 1.2rem;
+            transition: all 0.3s ease;
+        }
+        .status-normal { background: linear-gradient(135deg, #2ecc71, #27ae60); box-shadow: 0 4px 15px rgba(46, 204, 113, 0.4); }
+        .status-alert { background: linear-gradient(135deg, #e74c3c, #c0392b); box-shadow: 0 4px 15px rgba(231, 76, 60, 0.4); animation: pulse 1.5s infinite; }
 
-/* ===== Settings ===== */
-// ตั้งค่าเกณฑ์ความชื้นสำหรับการแจ้งเตือน
-const int SOIL_ALERT_THRESHOLD = 30; // ถ้าความชื้นต่ำกว่า 30% ให้แจ้งเตือน (ดินแห้ง)
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
 
-/* ===== Objects ===== */
-DHT dht(DHT_PIN, DHTTYPE);
-ESP8266WebServer server(80);
-FirebaseData firebaseData;
-FirebaseConfig config;
-FirebaseAuth auth;
-WiFiClientSecure client;
-UniversalTelegramBot bot(BOT_TOKEN, client);
+        /* การแสดงข้อมูล */
+        .data-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        .data-box {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid #e9ecef;
+        }
+        .data-box i { font-size: 1.5rem; margin-bottom: 5px; }
+        .data-box h3 { margin: 5px 0 0; font-size: 1.5rem; color: #2c3e50; }
+        .data-box p { margin: 0; font-size: 0.8rem; color: #7f8c8d; }
 
-/* ===== Control Variables ===== */
-bool alertLocked = false;
-unsigned long lastTempUpdate = 0; 
-const int updateInterval = 2000; 
+        .temp-icon { color: #e67e22; }
+        .soil-icon { color: #3498db; }
 
-void setup() {
-  Serial.begin(9600);
+        /* ปุ่มควบคุม */
+        .btn-control {
+            width: 100%;
+            padding: 12px;
+            margin: 5px 0;
+            border: none;
+            border-radius: 10px;
+            font-family: 'Prompt', sans-serif;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: transform 0.2s, opacity 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        .btn-control:active { transform: scale(0.98); }
+        
+        .btn-mute { background-color: #f1c40f; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        .btn-reset { background-color: #34495e; color: white; }
+        
+        .footer { margin-top: 20px; font-size: 0.8rem; color: #bdc3c7; }
+        
+        /* Loading */
+        #loading { display: block; }
+        #content { display: none; }
+    </style>
+</head>
+<body>
 
-  pinMode(VIB_PIN, INPUT);
-  // pinMode(SOIL_PIN, INPUT); // A0 ไม่ต้องประกาศ pinMode ใน ESP8266 ก็ได้
-  pinMode(BZ_PIN, OUTPUT);
-  digitalWrite(BZ_PIN, HIGH); // ปิดบัสเซอร์
+    <div class="container">
+        <div id="loading">กำลังเชื่อมต่อ...</div>
+        
+        <div id="content">
+            <div id="statusBox" class="status-card status-normal">
+                <i id="statusIcon" class="fas fa-check-circle"></i> 
+                <span id="statusText">สถานะปกติ</span>
+            </div>
 
-  dht.begin();
+            <div class="data-grid">
+                <div class="data-box">
+                    <i class="fas fa-temperature-high temp-icon"></i>
+                    <h3 id="tempValue">--</h3>
+                    <p>อุณหภูมิ (°C)</p>
+                </div>
+                <div class="data-box">
+                    <i class="fas fa-seedling soil-icon"></i>
+                    <h3 id="soilValue">--</h3>
+                    <p>ความชื้นในดิน (%)</p>
+                </div>
+            </div>
 
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("\nWiFi Connected");
-  Serial.println(WiFi.localIP());
+            <button class="btn-control btn-mute" onclick="muteSound()">
+                <i class="fas fa-volume-mute"></i> ปิดเสียงเตือน
+            </button>
+            <button class="btn-control btn-reset" onclick="resetSystem()">
+                <i class="fas fa-redo-alt"></i> รีเซ็ตระบบ
+            </button>
 
-  // ===== ตั้งค่า Telegram =====
-  client.setInsecure();
-  client.setTimeout(15000);
-  client.setBufferSizes(1024, 1024);
+            <div class="footer">Smart Monitor System v1.0</div>
+        </div>
+    </div>
 
-  // ===== ตั้งค่า Firebase =====
-  config.host = FIREBASE_HOST;
-  config.signer.tokens.legacy_token = FIREBASE_AUTH;
-  Firebase.begin(&config, &auth);
-}
+    <script>
+        // 1. ตั้งค่า Firebase (ใช้ค่าของคุณ)
+        const firebaseConfig = {
+            databaseURL: "https://kun16-95305-default-rtdb.firebaseio.com"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
 
-void loop() {
-  // ========================================================
-  // 1. อ่านค่าเซนเซอร์
-  // ========================================================
-  int v = digitalRead(VIB_PIN); // อ่านค่าสั่น (Digital)
-  
-  // อ่านค่าความชื้น (Analog)
-  int soilRaw = analogRead(SOIL_PIN); 
-  // แปลงค่า Analog (0-1024) เป็นเปอร์เซ็นต์ (0-100%)
-  // หมายเหตุ: เซนเซอร์ส่วนใหญ่ 1024=แห้งสนิท, 0=เปียกน้ำ (ต้อง map กลับด้าน)
-  int soilPercent = map(soilRaw, 1024, 0, 0, 100); 
-  
-  // กันค่าเกินขอบเขต
-  if(soilPercent < 0) soilPercent = 0;
-  if(soilPercent > 100) soilPercent = 100;
+        // 2. ฟังก์ชันอ่านข้อมูลแบบ Realtime
+        db.ref("/Monitor").on("value", (snapshot) => {
+            const data = snapshot.val();
+            
+            // ซ่อน Loading แสดง Content
+            document.getElementById("loading").style.display = "none";
+            document.getElementById("content").style.display = "block";
 
-  float t = dht.readTemperature(); 
-  if (isnan(t)) t = 0.0;
+            if (data) {
+                // อัปเดตตัวเลข
+                document.getElementById("tempValue").innerText = data.temp ? data.temp.toFixed(1) : "--";
+                document.getElementById("soilValue").innerText = data.soil_value ? data.soil_value : "--";
 
-  // ========================================================
-  // 2. เช็คสถานะจาก Firebase (เพื่อดูว่ามีคนกดปุ่มรีเซ็ตไหม)
-  // ========================================================
-  bool webAlert = false;
-  bool webVibStatus = false;
-  bool webSoilStatus = false; // เปลี่ยนตัวแปรมารับค่า Soil
+                // ตรวจสอบสถานะการแจ้งเตือน
+                // ถ้ามีการแจ้งเตือน (alert = true) หรือ สั่น หรือ ดินแห้ง
+                const isAlert = data.alert || data.vibrate || data.soil_alert;
 
-  if (Firebase.getBool(firebaseData, "/Monitor/alert")) {
-    webAlert = firebaseData.boolData();
-  }
-  if (Firebase.getBool(firebaseData, "/Monitor/vibrate")) {
-    webVibStatus = firebaseData.boolData();
-  }
-  // เปลี่ยน Key ใน Firebase เป็น soil_alert
-  if (Firebase.getBool(firebaseData, "/Monitor/soil_alert")) {
-    webSoilStatus = firebaseData.boolData();
-  }
+                const statusBox = document.getElementById("statusBox");
+                const statusText = document.getElementById("statusText");
+                const statusIcon = document.getElementById("statusIcon");
 
-  // ถ้าหน้าเว็บเป็น False ทั้งหมด (Reset)
-  if (webAlert == false && webVibStatus == false && webSoilStatus == false) {
-      digitalWrite(BZ_PIN, HIGH); // ปิดเสียง
-      
-      if (alertLocked == true) {
-          alertLocked = false; 
-          Serial.println("System Reset: Ready to monitor again.");
-      }
-  }
+                if (isAlert) {
+                    // โหมดแจ้งเตือน (แดง)
+                    statusBox.className = "status-card status-alert";
+                    statusText.innerText = "ตรวจพบสิ่งผิดปกติ!";
+                    statusIcon.className = "fas fa-exclamation-triangle";
+                    document.body.style.backgroundColor = "#ffebee"; // เปลี่ยนสีพื้นหลังเว็บ
+                } else {
+                    // โหมดปกติ (เขียว)
+                    statusBox.className = "status-card status-normal";
+                    statusText.innerText = "สถานะปกติ";
+                    statusIcon.className = "fas fa-check-circle";
+                    document.body.style.backgroundColor = "#f0f2f5";
+                }
+            }
+        });
 
-  // ========================================================
-  // 3. ส่วนตรวจจับเหตุผิดปกติ 
-  // ========================================================
-  if (!alertLocked) {
-    // เงื่อนไข: สั่น (HIGH) หรือ ความชื้นต่ำกว่าเกณฑ์ (ดินแห้ง)
-    if (v == HIGH || soilPercent < SOIL_ALERT_THRESHOLD) { 
-      
-      alertLocked = true;         
-      digitalWrite(BZ_PIN, LOW);  // เปิดบัสเซอร์
-      Serial.println("ALARM TRIGGERED!");
+        // 3. ฟังก์ชันปุ่มกด
+        
+        // ปุ่มปิดเสียง: ในโค้ด ESP ปัจจุบัน การจะปิดเสียงต้องเคลียร์ Alert
+        // แต่เพื่อความสะดวก เราจะสั่งเคลียร์เฉพาะตัวแปร alert หลัก (เพื่อให้เสียงดับ)
+        function muteSound() {
+            // หมายเหตุ: การทำงานนี้ขึ้นอยู่กับ Logic ใน ESP8266 ด้วย
+            // เพื่อให้ชัวร์ที่สุดกับโค้ดเดิม เราจะสั่งรีเซ็ตสถานะการแจ้งเตือน
+            // แต่ยังคงค่าอื่นๆ ไว้ (ถ้าทำได้) หรือ Reset ทั้งหมดเพื่อปิดเสียงแน่นอน
+            
+            if(confirm("ต้องการปิดเสียงเตือนใช่หรือไม่?")) {
+                db.ref("/Monitor").update({
+                    "alert": false,      // ปิดสถานะ Alert หลัก
+                    "vibrate": false,    // จำเป็นต้องปิดตัว trigger เพื่อให้เสียงดับ (ตามโค้ด ESP)
+                    "soil_alert": false  // จำเป็นต้องปิดตัว trigger เพื่อให้เสียงดับ
+                }).then(() => {
+                    console.log("Muted");
+                });
+            }
+        }
 
-      // --- ส่งค่าขึ้น Firebase ---
-      Firebase.setBool(firebaseData, "/Monitor/alert", true);
-      // ส่งสถานะว่าแจ้งเตือนเพราะดินแห้งใช่หรือไม่
-      Firebase.setBool(firebaseData, "/Monitor/soil_alert", (soilPercent < SOIL_ALERT_THRESHOLD)); 
-      Firebase.setBool(firebaseData, "/Monitor/vibrate", (v == HIGH));
-      Firebase.setFloat(firebaseData, "/Monitor/temp", t);
-      Firebase.setInt(firebaseData, "/Monitor/soil_value", soilPercent); // ส่งค่าความชื้นขึ้นไปด้วย
-
-      // --- ส่ง Telegram ---
-      String msg = "⚠️ แจ้งเตือนภัย!\n";
-      msg += "🌡 อุณหภูมิ: " + String(t, 2) + " °C\n";
-      
-      if (v == HIGH) {
-        msg += "⚡ การสั่น:  พบการสั่น!\n";
-      } else {
-        msg += "⚡ การสั่น: ปกติ\n";
-      }
-
-      // เปลี่ยนข้อความแจ้งเตือนความชื้น
-      msg += "🌱 ความชื้น: " + String(soilPercent) + "%";
-      if (soilPercent < SOIL_ALERT_THRESHOLD) {
-        msg += " (ต่ำกว่าเกณฑ์!)\n";
-      } else {
-        msg += " (ปกติ)\n";
-      }
-      
-      if (WiFi.status() == WL_CONNECTED) {
-        bot.sendMessage(CHAT_ID, msg, "");
-        Serial.println("Telegram Sent!");
-      }
-    }
-  }
-
-  // ========================================================
-  // 4. อัปเดตข้อมูลขึ้น Firebase เรื่อยๆ (Real-time)
-  // ========================================================
-  if (millis() - lastTempUpdate > updateInterval) {
-    lastTempUpdate = millis();
-    Firebase.setFloat(firebaseData, "/Monitor/temp", t);
-    // เพิ่มการส่งค่าความชื้นขึ้นไปโชว์ตลอดเวลา
-    Firebase.setInt(firebaseData, "/Monitor/soil_value", soilPercent);
-  }
-
-  delay(100); 
-}
+        // ปุ่มรีเซ็ต: ล้างค่าทุกอย่างให้เหมือนเริ่มต้นใหม่
+        function resetSystem() {
+            if(confirm("ต้องการรีเซ็ตระบบใช่หรือไม่?")) {
+                db.ref("/Monitor").update({
+                    "alert": false,
+                    "vibrate": false,
+                    "soil_alert": false
+                    // ไม่ต้องรีเซ็ต temp หรือ soil_value เพราะเซนเซอร์จะส่งค่ามาใหม่เอง
+                }).then(() => {
+                    console.log("System Reset");
+                });
+            }
+        }
+    </script>
+</body>
+</html>
